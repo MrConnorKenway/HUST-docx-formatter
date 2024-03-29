@@ -1,0 +1,6 @@
+venv/
+.vscode/
+*.docx
+*.xml
+.DS_Store
+

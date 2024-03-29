@@ -199,7 +199,8 @@ print('Found', len(ref_texts), 'references')
 #     print()
 
 checked = set()
-sorted_ref = []
+sorted_ref_nums = {}
+sorted_ref_texts = []
 
 
 # Sort reference entries based on the occurrence order of cross references in main text
@@ -208,9 +209,13 @@ for cross_ref in body.xpath('//w:instrText[contains(text(), "REF _Ref")]', names
     if ref_id and ref_id in references and ref_id not in checked:
         checked.add(ref_id)
         try:
-            sorted_ref.append(ref_texts[ref_pos[ref_id]])
+            sorted_ref_nums[ref_id] = len(sorted_ref_nums) + 1
+            sorted_ref_texts.append(ref_texts[ref_pos[ref_id]])
         except Exception as e:
             print(e)
+            print(ref_id)
+            print(ref_pos[ref_id])
+            print(len(ref_texts))
             exit()
 
 
@@ -253,15 +258,11 @@ for cross_ref in body.xpath('//w:instrText[contains(text(), "REF _Ref")]', names
             print('Error: Empty begin')
             exit()
         nearest_begin_node = begin_nodes[-1]
-        all_run_siblings = cross_ref.xpath('../../w:r', namespaces=ns)
         begin_idx = pp.index(nearest_begin_node.getparent())
         end_idx = pp.index(nearest_end_node.getparent())
         i = begin_idx
-        if begin_idx >= end_idx or len(all_run_siblings) < end_idx:
-            print(begin_idx, end_idx, len(all_run_siblings))
-            assert(False)
         while i <= end_idx:
-            run_node = all_run_siblings[i-1]
+            run_node = pp.getchildren()[i]
             if len(run_node.xpath('./w:rPr', namespaces=ns)) == 0:
                 # no rPr
                 xml_str = \
@@ -286,13 +287,27 @@ for cross_ref in body.xpath('//w:instrText[contains(text(), "REF _Ref")]', names
                 """
                 element = etree.fromstring(xml_str, parser=parser)
                 rPr_nodes[0].insert(0, element.xpath('./w:vertAlign', namespaces=ns)[0])
+
+            # Update the reference number
+            text_nodes = run_node.xpath('./w:t', namespaces=ns)
+            for t in text_nodes:
+                if re.match(r'^\[[0-9]+\]$', t.text):
+                    xml_str = \
+                    """
+                        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+                            <w:t>[{}]</w:t>
+                        </w:document>
+                    """.format(sorted_ref_nums[ref_id])
+                    element = etree.fromstring(xml_str, parser=parser)
+                    run_node.replace(t, element.xpath('./w:t', namespaces=ns)[0])
+
             i += 1
 
 
 reference_start = references_node.xpath('../..', namespaces=ns)[0]
 
 # Remove the original reference text, and replace it with sorted one
-for i, r in enumerate(sorted_ref):
+for i, r in enumerate(sorted_ref_texts):
     body.remove(r)
     body.insert(body.index(reference_start)+1+i, r)
 
